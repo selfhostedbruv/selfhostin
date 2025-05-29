@@ -3,6 +3,29 @@ import discord
 import asyncio
 from discord.ext import commands, tasks
 from datetime import datetime
+from flask import Flask, Response
+import threading
+import os
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    """Simple health check endpoint"""
+    return Response("Discord bot is running!", status=200, mimetype='text/plain')
+
+@app.route('/ping')
+def ping():
+    """Endpoint for uptime monitoring services"""
+    return Response("Pong!", status=200, mimetype='text/plain')
+
+def run_flask():
+    """Start Flask server in a separate thread"""
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+flask_thread = threading.Thread(target=run_flask, daemon=True)
+flask_thread.start()
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -14,6 +37,7 @@ message_tasks = {}
 async def on_ready():
     print(f"Logged in as {bot.user.name} ({bot.user.id})")
     print("------")
+    print(f"Health check URL: http://localhost:{os.getenv('PORT', 10000)}/ping")
 
 def create_task_id():
     return str(datetime.now().timestamp()).replace('.', '')[-10:]
@@ -24,10 +48,14 @@ async def send_repeated_messages(ctx, message, interval, count, channel):
     @tasks.loop(seconds=interval, count=count)
     async def message_task():
         await channel.send(message)
-        if message_task.current_loop == count - 1:
+        if count > 0 and message_task.current_loop == count - 1:
             del message_tasks[task_id]
             await ctx.send(f"✅ Task `{task_id}` completed!")
 
+    message_task.message = message
+    message_task.channel = channel
+    message_task.seconds = interval
+    
     message_tasks[task_id] = message_task
     message_task.start()
     
@@ -84,7 +112,7 @@ async def tasks(ctx):
     
     embed = discord.Embed(title="Active Repeating Tasks", color=0x00ff00)
     for task_id, task in message_tasks.items():
-        status = f"Running {task.current_loop}/{task.count}" if task.count else "Running forever"
+        status = f"Run {task.current_loop}/{task.count}" if task.count > 0 else "∞ Running"
         embed.add_field(
             name=f"ID: `{task_id}`",
             value=(
@@ -97,23 +125,15 @@ async def tasks(ctx):
         )
     await ctx.send(embed=embed)
 
+@bot.command()
+async def ping(ctx):
+    """Check bot latency"""
+    latency = round(bot.latency * 1000)
+    await ctx.send(f"🏓 Pong! {latency}ms")
+
 if __name__ == "__main__":
-    import os
-    bot.run(os.getenv("DISCORD_BOT_TOKEN"))
-
-from flask import Flask
-import threading
-import os
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Discord bot is running!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 3000))
-    app.run(host='0.0.0.0', port=port)
-
-threading.Thread(target=run_flask).start()
-
+    token = os.getenv("DISCORD_BOT_TOKEN")
+    if not token:
+        print("Error: DISCORD_BOT_TOKEN environment variable not set!")
+        exit(1)
+    bot.run(token)
