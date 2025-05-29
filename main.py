@@ -1,14 +1,13 @@
 # main.py
 import discord
 import asyncio
-from discord.ext import commands, tasks
+from discord.ext import commands
 from datetime import datetime
 from flask import Flask, Response
 import threading
 import os
 import time
 
-# Create Flask app
 app = Flask(__name__)
 
 @app.route('/')
@@ -23,16 +22,13 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-# Start Flask server in background thread
 flask_thread = threading.Thread(target=run_flask, daemon=True)
 flask_thread.start()
 
-# Discord bot setup
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Store active tasks
 message_tasks = {}
 
 class RepeatingTask:
@@ -71,11 +67,23 @@ class RepeatingTask:
         finally:
             if self.id in message_tasks:
                 del message_tasks[self.id]
-                await self.ctx.send(f"✅ Task `{self.id}` completed!" if self.count > 0 else f"⏹️ Stopped task `{self.id}`")
+                if self.count > 0:
+                    await self.ctx.send(f"✅ Task `{self.id}` completed!")
+                else:
+                    await self.ctx.send(f"⏹️ Stopped task `{self.id}`")
 
     def stop(self):
         if self.task:
             self.task.cancel()
+
+def is_admin():
+    """Check if user has Administrator permissions"""
+    async def predicate(ctx):
+        if ctx.author.guild_permissions.administrator:
+            return True
+        await ctx.send("⛔ You need Administrator permissions to use this bot!")
+        return False
+    return commands.check(predicate)
 
 @bot.event
 async def on_ready():
@@ -84,10 +92,9 @@ async def on_ready():
     print(f"Health check URL: http://localhost:{os.getenv('PORT', 10000)}/ping")
 
 @bot.command()
+@is_admin()
 async def repeat(ctx, interval: int, count: int, *, message: str):
-    """Start repeating messages
-    Example: !repeat 10 5 "Hello world"
-    """
+    """Start repeating messages (Admin only)"""
     if interval < 1:
         return await ctx.send("⛔ Interval must be at least 1 second")
     if count < 0:
@@ -113,10 +120,9 @@ async def repeat(ctx, interval: int, count: int, *, message: str):
     )
 
 @bot.command()
+@is_admin()
 async def repeat_in(ctx, channel: discord.TextChannel, interval: int, count: int, *, message: str):
-    """Start repeating messages in specific channel
-    Example: !repeat_in #general 10 5 "Hello world"
-    """
+    """Start repeating messages in specific channel (Admin only)"""
     if interval < 1:
         return await ctx.send("⛔ Interval must be at least 1 second")
     if count < 0:
@@ -142,10 +148,9 @@ async def repeat_in(ctx, channel: discord.TextChannel, interval: int, count: int
     )
 
 @bot.command()
+@is_admin()
 async def stop(ctx, task_id: str):
-    """Stop a repeating task
-    Example: !stop 1234567890
-    """
+    """Stop a repeating task (Admin only)"""
     task = message_tasks.get(task_id)
     if task:
         task.stop()
@@ -154,8 +159,9 @@ async def stop(ctx, task_id: str):
         await ctx.send("⚠️ Task not found. Use `!tasks` to see active tasks")
 
 @bot.command()
+@is_admin()
 async def tasks(ctx):
-    """List active repeating tasks"""
+    """List active repeating tasks (Admin only)"""
     if not message_tasks:
         return await ctx.send("No active tasks")
     
@@ -180,6 +186,42 @@ async def ping(ctx):
     """Check bot latency"""
     latency = round(bot.latency * 1000)
     await ctx.send(f"🏓 Pong! {latency}ms")
+
+@bot.command()
+@is_admin()
+async def adminhelp(ctx):
+    """Show admin commands help"""
+    embed = discord.Embed(title="Admin Bot Commands", color=0x3498db)
+    embed.add_field(
+        name="!repeat [seconds] [count] [message]",
+        value="Start repeating messages in current channel\n"
+              "Example: `!repeat 10 5 \"Hello world\"`",
+        inline=False
+    )
+    embed.add_field(
+        name="!repeat_in [#channel] [seconds] [count] [message]",
+        value="Start repeating messages in specific channel\n"
+              "Example: `!repeat_in #announcements 3600 0 \"Hourly update\"`",
+        inline=False
+    )
+    embed.add_field(
+        name="!stop [task_id]",
+        value="Stop a repeating task\n"
+              "Example: `!stop 1234567890`",
+        inline=False
+    )
+    embed.add_field(
+        name="!tasks",
+        value="List all active repeating tasks",
+        inline=False
+    )
+    embed.add_field(
+        name="!adminhelp",
+        value="Show this help message",
+        inline=False
+    )
+    embed.set_footer(text="Requires Administrator permissions")
+    await ctx.send(embed=embed)
 
 if __name__ == "__main__":
     token = os.getenv("DISCORD_BOT_TOKEN")
