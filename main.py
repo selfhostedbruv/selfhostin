@@ -101,8 +101,9 @@ if __name__ == "__main__":
     import os
     bot.run(os.getenv("DISCORD_BOT_TOKEN"))
 
-import os
 from flask import Flask
+import threading
+import os
 
 app = Flask(__name__)
 
@@ -110,6 +111,9 @@ app = Flask(__name__)
 def home():
     return "Discord bot is running!"
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 3000))
+def run_flask():
+    port = int(os.environ.get("PORT", 3000))
     app.run(host='0.0.0.0', port=port)
+
+threading.Thread(target=run_flask).start()
+
