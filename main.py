@@ -8,7 +8,6 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Store active tasks
 message_tasks = {}
 
 @bot.event
@@ -101,3 +100,16 @@ async def tasks(ctx):
 if __name__ == "__main__":
     import os
     bot.run(os.getenv("DISCORD_BOT_TOKEN"))
+
+import os
+from flask import Flask
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Discord bot is running!"
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 3000))
+    app.run(host='0.0.0.0', port=port)
